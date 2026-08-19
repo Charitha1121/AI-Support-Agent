@@ -13,7 +13,7 @@ def get_connection():
 
 
 def create_tables():
-    """Create the orders and accounts tables."""
+    """Create the orders, accounts, and escalations tables."""
     connection = get_connection()
     cursor = connection.cursor()
 
@@ -31,6 +31,17 @@ def create_tables():
             account_id INTEGER PRIMARY KEY,
             plan TEXT NOT NULL,
             renewal_date TEXT NOT NULL,
+            status TEXT NOT NULL
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS escalations (
+            id TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL,
+            user_message TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
             status TEXT NOT NULL
         )
     """)
