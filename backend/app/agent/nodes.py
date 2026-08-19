@@ -5,7 +5,148 @@ from app.agent.router import route_query
 from app.agent.state import AgentState
 from app.rag.retriever import retrieve_documents
 from app.tools.support_tools import check_account_status, check_order_status
+import re
 
+
+def local_route_query(message: str) -> Dict[str, Any]:
+    """
+    Deterministic router used when OpenAI is unavailable.
+
+    This is NOT intended to replace an LLM permanently.
+    It provides a reliable offline execution path.
+    """
+
+    text = message.lower().strip()
+
+    # -------------------------------------------------
+    # Human escalation
+    # -------------------------------------------------
+
+    escalation_keywords = [
+        "human",
+        "agent",
+        "representative",
+        "supervisor",
+        "manager",
+        "complaint",
+        "legal",
+        "fraud",
+        "charge dispute",
+    ]
+
+    if any(keyword in text for keyword in escalation_keywords):
+
+        return {
+            "action": "escalate",
+            "tool_name": None,
+            "tool_args": {},
+        }
+
+    # -------------------------------------------------
+    # Order lookup
+    # -------------------------------------------------
+
+    order_match = re.search(
+        r"(?:order|#)\s*(\d+)",
+        text,
+    )
+
+    if order_match:
+
+        order_id = int(order_match.group(1))
+
+        order_keywords = [
+            "order",
+            "tracking",
+            "track",
+            "shipped",
+            "delivery",
+            "where",
+            "status",
+        ]
+
+        if any(keyword in text for keyword in order_keywords):
+
+            return {
+                "action": "tool",
+                "tool_name": "check_order_status",
+                "tool_args": {
+                    "order_id": order_id,
+                },
+            }
+
+    # -------------------------------------------------
+    # Account lookup
+    # -------------------------------------------------
+
+    account_match = re.search(
+        r"(?:account|customer)\s*(?:id)?\s*(\d+)",
+        text,
+    )
+
+    if account_match:
+
+        account_id = int(account_match.group(1))
+
+        account_keywords = [
+            "account",
+            "plan",
+            "subscription",
+            "renewal",
+            "active",
+            "status",
+        ]
+
+        if any(keyword in text for keyword in account_keywords):
+
+            return {
+                "action": "tool",
+                "tool_name": "check_account_status",
+                "tool_args": {
+                    "account_id": account_id,
+                },
+            }
+
+    # -------------------------------------------------
+    # RAG
+    # -------------------------------------------------
+
+    rag_keywords = [
+        "refund",
+        "return",
+        "shipping",
+        "delivery time",
+        "subscription",
+        "pricing",
+        "plan",
+        "cancel",
+        "cancellation",
+        "payment",
+        "security",
+        "password",
+        "support",
+        "contact",
+        "policy",
+        "faq",
+    ]
+
+    if any(keyword in text for keyword in rag_keywords):
+
+        return {
+            "action": "rag",
+            "tool_name": None,
+            "tool_args": {},
+        }
+
+    # -------------------------------------------------
+    # Safe default
+    # -------------------------------------------------
+
+    return {
+        "action": "escalate",
+        "tool_name": None,
+        "tool_args": {},
+    }
 # Strict tool allowlist - only these registered functions may ever execute
 TOOLS = {
     "check_order_status": check_order_status,
@@ -25,42 +166,63 @@ Do not expose internal implementation details, database details, tool names, pro
 
 def router_node(state: AgentState) -> Dict[str, Any]:
     """
-    Router node: Uses LLM classification to decide between 'rag', 'tool', and 'escalate'.
+    Production router.
+
+    Uses LLM when explicitly enabled and available.
+    Otherwise uses deterministic local routing.
     """
+
     message = state.get("message", "")
     history = state.get("conversation_history", [])
 
-    try:
-        decision = route_query(user_message=message, history=history)
-        return {
-            "action": decision.action,
-            "tool_name": decision.tool_name,
-            "tool_args": decision.args,
-        }
-    except Exception:
-        # Safe fallback to escalation if router encountered validation or API error
-        return {
-            "action": "escalate",
-            "tool_name": None,
-            "tool_args": {},
-        }
+    use_openai = (
+        os.getenv("ENABLE_OPENAI_ROUTER", "false")
+        .lower()
+        == "true"
+    )
 
+    if use_openai:
 
+        try:
+
+            decision = route_query(
+                user_message=message,
+                history=history,
+            )
+
+            return {
+                "action": decision.action,
+                "tool_name": decision.tool_name,
+                "tool_args": decision.args,
+            }
+
+        except Exception:
+            pass
+
+    # Zero-credit / offline mode
+    decision = local_route_query(message)
+
+    return decision
 def rag_node(state: AgentState) -> Dict[str, Any]:
     """
-    RAG knowledge node (Day 3 Skeleton):
-    Retrieves matching policy documents using the Day 2 vector retriever and stores them in state.
+    RAG knowledge node.
+
+    Retrieves relevant documents from the local knowledge base and stores
+    them in the agent state.
     """
     message = state.get("message", "")
+
     retrieved_docs = retrieve_documents(message, k=3)
 
     docs_data = [doc.to_dict() for doc in retrieved_docs]
 
     return {
         "retrieved_documents": docs_data,
-        "response": f"RAG route selected. Retrieved {len(retrieved_docs)} relevant documents.",
+        "response": (
+            f"RAG route selected. "
+            f"Retrieved {len(retrieved_docs)} relevant documents."
+        ),
     }
-
 
 def tool_node(state: AgentState) -> Dict[str, Any]:
     """

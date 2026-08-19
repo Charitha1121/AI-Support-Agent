@@ -1,42 +1,81 @@
 import os
 import sys
+
 from pathlib import Path
 
-# Ensure backend root is on sys.path
+
 backend_dir = Path(__file__).resolve().parent
+
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
-# Default EMBEDDING_PROVIDER to 'local' for zero-credit testing
-os.environ.setdefault("EMBEDDING_PROVIDER", "local")
+
+# ZERO-CREDIT MODE
+os.environ.setdefault(
+    "EMBEDDING_PROVIDER",
+    "local",
+)
+
+os.environ.setdefault(
+    "ENABLE_OPENAI_ROUTER",
+    "false",
+)
+
 
 from tests.test_tools import run_all_tool_tests
 from tests.test_rag import run_all_rag_tests
 from tests.test_router import run_all_router_tests
 from tests.test_agent_graph import run_all_agent_graph_tests
 from tests.test_day4_tools import run_all_day4_tests
+from tests.test_day5_api import run_all_day5_tests
 
 
 def main():
+
     print("\n==========================================================")
-    print("  NOVATECH AI SUPPORT AGENT — TEST SUITE (DAYS 1, 2, 3, 4)")
+    print(" NOVATECH AI SUPPORT AGENT — TEST SUITE (DAYS 1–5)")
     print("==========================================================\n")
 
-    # 1. Day 1: Tools
+
+    print("========================================")
+    print("RUNNING DAY 1 TOOL TESTS")
+    print("========================================")
+
     run_all_tool_tests()
 
-    # 2. Day 2: Knowledge Base & RAG
+
+    print("\n========================================")
+    print("RUNNING DAY 2 KNOWLEDGE BASE & RAG TESTS")
+    print("========================================")
+
     run_all_rag_tests()
 
-    # 3. Day 3: Router & LangGraph Agent Skeleton
+
+    print("\n========================================")
+    print("RUNNING DAY 3 ROUTER TESTS")
+    print("========================================")
+
     run_all_router_tests()
+
     run_all_agent_graph_tests()
 
-    # 4. Day 4: Real Database Tool-Calling Integration
+
+    print("\n========================================")
+    print("RUNNING DAY 4 REAL TOOL-CALLING TESTS")
+    print("========================================")
+
     run_all_day4_tests()
 
-    print("==========================================================")
-    print(" ALL DAY 1, DAY 2, DAY 3 & DAY 4 TESTS PASSED (100% PASS) ")
+
+    print("\n========================================")
+    print("RUNNING DAY 5 API & MEMORY TESTS")
+    print("========================================")
+
+    run_all_day5_tests()
+
+
+    print("\n==========================================================")
+    print("       ALL DAY 1–5 TESTS PASSED SUCCESSFULLY!")
     print("==========================================================\n")
 
 
